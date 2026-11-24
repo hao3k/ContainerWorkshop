@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bggdb-deploy
+  namespace: bggns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      dept: eng
+      env: dev
+      app: bggdb
+  template:
+    metadata:
+      labels:
+        dept: eng
+        env: dev
+        app: bggdb
+    spec:
+      containers:
+      - name: bggdb-container
+        image: stackupiss/bgg-database:v1
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: BGG_DB_USER
+          value: "root"
+        - name: BGG_DB_HOST
+          value: "mydb-svc"
+        - name: BGG_DB_PASSWORD
+          value: "changeit"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 3306
+          failureThreshold: 3
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+          periodSeconds: 30
+        ports:
+        - containerPort: 3306
+          name: podinfo-port
+          protocol: TCP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mydb-svc
+  namespace: bggns
+spec:
+  type: ClusterIP
+  selector:
+    app: bggdb
+  ports:
+  - name: podinfo-port
+    port: 3306
+    targetPort: 3306
