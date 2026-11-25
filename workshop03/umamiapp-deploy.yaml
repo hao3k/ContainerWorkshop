@@ -1,0 +1,121 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: umamiapp-deploy
+  namespace: workshop03
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      dept: eng
+      env: dev
+      app: umamiapp
+  template:
+    metadata:
+      labels:
+        dept: eng
+        env: dev
+        app: umamiapp
+    spec:
+      containers:
+      - name: umamiapp-container
+        image: ghcr.io/umami-software/umami:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: umamidb-secret
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: umamidb-secret
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: umamidb-secret
+              key: POSTGRES_DB
+        - name: DATABASE_URL
+          value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@umamidb-svc.workshop03.svc.cluster.local:5432/$(POSTGRES_DB)"
+        - name: APP_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: umamiapp-secret
+              key: APP_SECRET
+        resources:
+          requests:
+            memory: 512Mi
+            cpu: 256m
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 3000
+          failureThreshold: 3
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+          periodSeconds: 30
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: umamiapp-svc
+  namespace: workshop03
+spec:
+  type: ClusterIP
+  selector:
+    app: umamiapp
+  ports:
+  - name: podinfo-svc-port
+    port: 3000
+    targetPort: 3000
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: umamiapp-httproute
+  namespace: workshop03
+spec:
+  hostnames:
+  - umami.172.25.39.200.nip.io
+  parentRefs:
+  - name: default-gtw
+    namespace: default
+    port: 80
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: umamiapp-svc
+      port: 3000
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: umamiapp-hpa
+  namespace: workshop03
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: umamiapp-deploy
+  minReplicas: 1
+  maxReplicas: 4
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 1

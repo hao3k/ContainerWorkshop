@@ -1,0 +1,109 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: workshop03
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: umamidb-secret
+  namespace: workshop03
+stringData:
+  POSTGRES_USER: umami
+  POSTGRES_PASSWORD: mydbpassword
+  POSTGRES_DB: umami
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: umamidb-pvc
+  namespace: workshop03
+spec:
+  storageClassName: standard
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: umamidb-deploy
+  namespace: workshop03
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: umamidb
+  template:
+    metadata:
+      labels:
+        app: umamidb
+    spec:
+      containers:
+        - name: umamidb-container
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: umamidb-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: umamidb-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: umamidb-secret
+                  key: POSTGRES_DB
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - $(POSTGRES_USER)
+                - -d
+                - $(POSTGRES_DB)
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: umamidb-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: umamidb-svc
+  namespace: workshop03
+spec:
+  type: ClusterIP
+  selector:
+    app: umamidb
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+      protocol: TCP
