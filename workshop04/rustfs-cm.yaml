@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rustfs-config
+  namespace: workshop04
+data:
+  RUSTFS_ADDRESS: "0.0.0.0:9000"
+  RUSTFS_CONSOLE_ENABLE: "true"
+  RUSTFS_CONSOLE_ADDRESS: "0.0.0.0:9001"
+  RUSTFS_VOLUMES: "http://node{0...2}.workshop04.svc.cluster.local:9000/data"
